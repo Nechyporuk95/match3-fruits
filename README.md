@@ -85,7 +85,8 @@ let size=6;
 let score=0;
 let selected=null;
 let currentLevel=1;
-let collectedCount=0; // Для collect/bonus
+let collectedCount=0; 
+let requiredCount=0;
 const boardEl = document.getElementById("board");
 const scoreEl = document.getElementById("score");
 const taskEl = document.getElementById("task");
@@ -135,6 +136,8 @@ function initBoard(){
   }
   score=0;
   collectedCount=0;
+  const t=LEVELS[currentLevel-1].task;
+  requiredCount = (t.type==='bonus') ? Math.floor(t.amount/5) : t.amount;
   scoreEl.textContent="Очки: 0";
   showTask();
   ensureMovesExist();
@@ -143,8 +146,8 @@ function initBoard(){
 function showTask(){
   const t=LEVELS[currentLevel-1].task;
   if(t.type==='points') taskEl.textContent=`Задание: набрать ${t.amount} очков`;
-  else if(t.type==='collect') taskEl.textContent=`Задание: собрать ${t.amount} ${t.fruit}`;
-  else if(t.type==='bonus') taskEl.textContent=`Задание: активировать ${t.amount} ${t.fruit}`;
+  else if(t.type==='collect') taskEl.textContent=`Задание: собрать ${requiredCount} ${t.fruit} (Собрано: ${collectedCount}, Осталось: ${Math.max(0, requiredCount-collectedCount)})`;
+  else if(t.type==='bonus') taskEl.textContent=`Задание: активировать ${requiredCount} ${t.fruit} (Собрано: ${collectedCount}, Осталось: ${Math.max(0, requiredCount-collectedCount)})`;
 }
 
 function selectCell(r,c,cell){
@@ -175,8 +178,7 @@ function checkMatches(){
       let f=board[r][c];
       if(f==='🍏'){ for(let col=0;col<size;col++) matched.push([r,col]); score+=100; }
       if(f==='🥝'){ for(let row=0;row<size;row++) matched.push([row,c]); score+=100; }
-      if(t.type==='collect' && f===t.fruit) collectedCount+=1;
-      if(t.type==='bonus' && f===t.fruit) collectedCount+=1;
+      if((t.type==='collect' || t.type==='bonus') && f===t.fruit) collectedCount+=1;
     });
     matched.forEach(([r,c])=>{ const idx=r*size+c; const cell=boardEl.children[idx]; cell.classList.add('match'); });
     setTimeout(()=>{
@@ -189,6 +191,7 @@ function checkMatches(){
     },300);
     score+=matched.length*10;
     scoreEl.textContent="Очки: "+score;
+    showTask(); // Обновляем прогресс сбора фруктов
     matchSound.play();
     return true;
   }
@@ -214,7 +217,7 @@ function checkTask(){
   const t=LEVELS[currentLevel-1].task;
   let done=false;
   if(t.type==='points' && score>=t.amount) done=true;
-  if((t.type==='collect' || t.type==='bonus') && collectedCount>=t.amount) done=true;
+  if((t.type==='collect' || t.type==='bonus') && collectedCount>=requiredCount) done=true;
   if(done){
     alert('Уровень пройден!');
     currentLevel++; if(currentLevel>LEVELS.length) currentLevel=1;
@@ -222,7 +225,6 @@ function checkTask(){
   }
 }
 
-// Проверка, есть ли возможные ходы
 function ensureMovesExist(){
   let hasMove=false;
   for(let r=0;r<size;r++){

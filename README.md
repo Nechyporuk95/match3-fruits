@@ -85,15 +85,16 @@ let size=6;
 let score=0;
 let selected=null;
 let currentLevel=1;
+let collectedCount=0; // Для collect/bonus
 const boardEl = document.getElementById("board");
 const scoreEl = document.getElementById("score");
 const taskEl = document.getElementById("task");
 const matchSound = document.getElementById("matchSound");
 
-// Генерация 50 уровней с уникальными заданиями и разными полями
+// Генерация 50 уровней
 const LEVELS=[];
 for(let i=1;i<=50;i++){
-  let sz=6+Math.floor(i/10); // увеличиваем размер поля каждые 10 уровней
+  let sz=6+Math.floor(i/10);
   let type='points';
   let fruit=null;
   if(i%5===2) { type='collect'; fruit=fruits[Math.floor(Math.random()*8)]; }
@@ -133,8 +134,10 @@ function initBoard(){
     board.push(row);
   }
   score=0;
+  collectedCount=0;
   scoreEl.textContent="Очки: 0";
   showTask();
+  ensureMovesExist();
 }
 
 function showTask(){
@@ -148,7 +151,10 @@ function selectCell(r,c,cell){
   if(!selected){selected={r,c,cell}; cell.style.transform='scale(1.2)';}
   else{
     let sr=selected.r, sc=selected.c;
-    if(Math.abs(sr-r)+Math.abs(sc-c)===1){ swap(sr,sc,r,c); if(!checkMatches()){ swap(sr,sc,r,c); } }
+    if(Math.abs(sr-r)+Math.abs(sc-c)===1){ 
+      swap(sr,sc,r,c); 
+      if(!checkMatches()){ swap(sr,sc,r,c); }
+    }
     selected.cell.style.transform='scale(1)';
     selected=null;
   }
@@ -164,13 +170,23 @@ function checkMatches(){
   for(let r=0;r<size;r++){ for(let c=0;c<size-2;c++){ let f=board[r][c]; if(f&&f===board[r][c+1]&&f===board[r][c+2]) matched.push([r,c],[r,c+1],[r,c+2]); } }
   for(let c=0;c<size;c++){ for(let r=0;r<size-2;r++){ let f=board[r][c]; if(f&&f===board[r+1][c]&&f===board[r+2][c]) matched.push([r,c],[r+1,c],[r+2,c]); } }
   if(matched.length>0){
+    const t=LEVELS[currentLevel-1].task;
     matched.forEach(([r,c])=>{
       let f=board[r][c];
       if(f==='🍏'){ for(let col=0;col<size;col++) matched.push([r,col]); score+=100; }
       if(f==='🥝'){ for(let row=0;row<size;row++) matched.push([row,c]); score+=100; }
+      if(t.type==='collect' && f===t.fruit) collectedCount+=1;
+      if(t.type==='bonus' && f===t.fruit) collectedCount+=1;
     });
     matched.forEach(([r,c])=>{ const idx=r*size+c; const cell=boardEl.children[idx]; cell.classList.add('match'); });
-    setTimeout(()=>{ matched.forEach(([r,c])=>board[r][c]=null); dropFruits(); renderBoard(); checkTask(); },300);
+    setTimeout(()=>{
+      matched.forEach(([r,c])=>board[r][c]=null);
+      dropFruits();
+      renderBoard();
+      if(checkMatches()) return;
+      checkTask();
+      ensureMovesExist();
+    },300);
     score+=matched.length*10;
     scoreEl.textContent="Очки: "+score;
     matchSound.play();
@@ -182,7 +198,10 @@ function checkMatches(){
 function dropFruits(){
   for(let c=0;c<size;c++){
     let empty=0;
-    for(let r=size-1;r>=0;r--){ if(!board[r][c]) empty++; else if(empty>0){ board[r+empty][c]=board[r][c]; board[r][c]=null; } }
+    for(let r=size-1;r>=0;r--){
+      if(!board[r][c]) empty++;
+      else if(empty>0){ board[r+empty][c]=board[r][c]; board[r][c]=null; }
+    }
     for(let r=0;r<empty;r++){ board[r][c]=randomFruit(); }
   }
 }
@@ -194,13 +213,49 @@ function renderBoard(){
 function checkTask(){
   const t=LEVELS[currentLevel-1].task;
   let done=false;
-  if(t.type==='points'&&score>=t.amount) done=true;
-  // можно добавить подсчёт collect и bonus по фруктам
+  if(t.type==='points' && score>=t.amount) done=true;
+  if((t.type==='collect' || t.type==='bonus') && collectedCount>=t.amount) done=true;
   if(done){
     alert('Уровень пройден!');
     currentLevel++; if(currentLevel>LEVELS.length) currentLevel=1;
     initBoard();
   }
+}
+
+// Проверка, есть ли возможные ходы
+function ensureMovesExist(){
+  let hasMove=false;
+  for(let r=0;r<size;r++){
+    for(let c=0;c<size;c++){
+      if(c<size-1){
+        swap(r,c,r,c+1);
+        if(checkPotentialMatches()){ hasMove=true; }
+        swap(r,c,r,c+1);
+      }
+      if(r<size-1){
+        swap(r,c,r+1,c);
+        if(checkPotentialMatches()){ hasMove=true; }
+        swap(r,c,r+1,c);
+      }
+    }
+  }
+  if(!hasMove){
+    shuffleBoard();
+    renderBoard();
+    ensureMovesExist();
+  }
+}
+
+function checkPotentialMatches(){
+  for(let r=0;r<size;r++){ for(let c=0;c<size-2;c++){ if(board[r][c]&&board[r][c]===board[r][c+1]&&board[r][c]===board[r][c+2]) return true; } }
+  for(let c=0;c<size;c++){ for(let r=0;r<size-2;r++){ if(board[r][c]&&board[r][c]===board[r+1][c]&&board[r][c]===board[r+2][c]) return true; } }
+  return false;
+}
+
+function shuffleBoard(){
+  let flat=board.flat();
+  for(let i=flat.length-1;i>0;i--){ let j=Math.floor(Math.random()*(i+1)); [flat[i],flat[j]]=[flat[j],flat[i]]; }
+  for(let r=0;r<size;r++){ for(let c=0;c<size;c++){ board[r][c]=flat[r*size+c]; } }
 }
 
 function startGame(){
@@ -214,13 +269,22 @@ function showLevelSelect(){
   document.getElementById('menu').style.display='none';
   document.getElementById('levelSelect').style.display='block';
   const levelsDiv=document.getElementById('levels'); levelsDiv.innerHTML='';
-  for(let i=1;i<=50;i++){ const btn=document.createElement('button'); btn.className='btn'; btn.textContent='Уровень '+i; btn.onclick=()=>{currentLevel=i; initBoard(); document.getElementById('levelSelect').style.display='none'; document.getElementById('game').style.display='block';}; levelsDiv.appendChild(btn); }
+  for(let i=1;i<=50;i++){ 
+    const btn=document.createElement('button'); 
+    btn.className='btn'; 
+    btn.textContent='Уровень '+i; 
+    btn.onclick=()=>{currentLevel=i; initBoard(); document.getElementById('levelSelect').style.display='none'; document.getElementById('game').style.display='block';};
+    levelsDiv.appendChild(btn); 
+  }
 }
 
-function backToMenu(){ document.getElementById('menu').style.display='block'; document.getElementById('game').style.display='none'; document.getElementById('levelSelect').style.display='none'; }
+function backToMenu(){ 
+  document.getElementById('menu').style.display='block'; 
+  document.getElementById('game').style.display='none'; 
+  document.getElementById('levelSelect').style.display='none'; 
+}
 
 document.getElementById('menu').style.display='block';
 </script>
 </body>
 </html>
-

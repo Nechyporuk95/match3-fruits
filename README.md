@@ -121,6 +121,7 @@ body {
 <audio id="matchSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
 <script>
 const fruits = ["🍎","🍌","🍇","🍊","🍉","🍒","🍓","🍍"];
+const specials = ["🍏","🥝"];
 let board=[], size=6, score=0, selected=null, currentLevel=1, collected=0, idleTimer=null;
 let unlockedLevels = 1;
 const boardEl=document.getElementById("board");
@@ -128,6 +129,7 @@ const scoreEl=document.getElementById("score");
 const taskEl=document.getElementById("task");
 const matchSound=document.getElementById("matchSound");
 
+// создание уровней
 const LEVELS=[];
 for(let i=1;i<=50;i++){
   let sz=6+Math.floor(i/10);
@@ -138,6 +140,7 @@ for(let i=1;i<=50;i++){
   LEVELS.push({size:sz, task:{type, fruit, amount}});
 }
 
+// рандомизация фрукта
 function randomFruit(){
   const t=LEVELS[currentLevel-1].task;
   let r=Math.random();
@@ -147,6 +150,7 @@ function randomFruit(){
   return fruits[Math.floor(Math.random()*fruits.length)];
 }
 
+// Инициализация поля
 function initBoard(){
   size=LEVELS[currentLevel-1].size;
   boardEl.style.gridTemplateColumns=`repeat(${size},50px)`;
@@ -172,50 +176,27 @@ function initBoard(){
   resolveBoard();
 }
 
+// Показ задания
 function showTask(){
   const t=LEVELS[currentLevel-1].task;
   if(t.type==='points') taskEl.textContent=`Задание: набрать ${t.amount} очков`;
   else taskEl.textContent=`Задание: ${t.type==='collect'?'собрать':'активировать'} ${t.amount} ${t.fruit} (собрано: ${collected}/${t.amount})`;
 }
 
+// Выбор клетки
 function selectCell(r,c,cell){
   if(!selected){selected={r,c,cell}; cell.style.transform='scale(1.2)';}
   else{
     let sr=selected.r, sc=selected.c;
-    if(Math.abs(sr-r)+Math.abs(sc-c)===1){ trySwap(sr,sc,r,c); }
+    if(Math.abs(sr-r)+Math.abs(sc-c)===1){ swap(sr,sc,r,c); resolveBoard(); }
     selected.cell.style.transform='scale(1)'; selected=null;
   }
 }
 
-// --- Анимация хода с эффектом отскока ---
-function trySwap(r1,c1,r2,c2){
-  const cell1 = boardEl.children[r1*size+c1];
-  const cell2 = boardEl.children[r2*size+c2];
-  [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
-  renderBoard();
+// swap с визуальным обновлением
+function swap(r1,c1,r2,c2){ [board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]]; renderBoard(); }
 
-  if(findMatches().length>0){
-    resolveBoard();
-  } else {
-    // Возврат назад с «отскоком»
-    cell1.style.transition='transform 0.15s';
-    cell2.style.transition='transform 0.15s';
-    cell1.style.transform='translate(' + (c1-c2)*50 + 'px,' + (r1-r2)*50 + 'px) scale(1.1)';
-    cell2.style.transform='translate(' + (c2-c1)*50 + 'px,' + (r2-r1)*50 + 'px) scale(1.1)';
-    setTimeout(()=>{
-      cell1.style.transform='translate(0,0) scale(0.9)';
-      cell2.style.transform='translate(0,0) scale(0.9)';
-      setTimeout(()=>{
-        [board[r1][c1], board[r2][c2]] = [board[r2][c2], board[r1][c1]];
-        renderBoard();
-        cell1.style.transition=''; cell2.style.transition='';
-        cell1.style.transform='scale(1)';
-        cell2.style.transform='scale(1)';
-      },150);
-    },150);
-  }
-}
-
+// Находим совпадения
 function findMatches(){
   let matches=[];
   for(let r=0;r<size;r++)for(let c=0;c<size-2;c++){
@@ -235,27 +216,95 @@ function findMatches(){
   return [...new Set(matches.map(x=>x.toString()))].map(x=>x.split(',').map(Number));
 }
 
-function removeMatches(matches){ matches.forEach(([r,c])=>{ board[r][c]=null; score+=10; collected++; }); scoreEl.textContent="Очки: "+score; showTask(); }
+// Подсветка совпадений
+function highlightMatches(matches){ clearGlow(); matches.forEach(([r,c])=>boardEl.children[r*size+c].classList.add('matchGlow')); }
+function clearGlow(){ [...boardEl.children].forEach(cell=>cell.classList.remove('matchGlow')); }
 
-function dropFruits(){ for(let c=0;c<size;c++){ let empty=[]; for(let r=size-1;r>=0;r--){ if(!board[r][c]) empty.push(r); else if(empty.length>0){ let newRow=empty.shift(); board[newRow][c]=board[r][c]; board[r][c]=null; empty.push(r); } } for(let e of empty) board[e][c]=randomFruit(); } renderBoard(); }
+// Удаление совпадений
+function removeMatches(matches){
+  highlightMatches(matches);
+  matches.forEach(([r,c])=>{
+    const cell=boardEl.children[r*size+c];
+    cell.classList.add("remove");
+    board[r][c]=null;
+    score+=10; collected++;
+  });
+  scoreEl.textContent="Очки: "+score;
+  showTask();
+}
 
+// Анимация падения фруктов
+function dropFruits(){
+  for(let c=0;c<size;c++){
+    let empty=[];
+    for(let r=size-1;r>=0;r--){
+      if(!board[r][c]) empty.push(r);
+      else if(empty.length>0){
+        let newRow=empty.shift();
+        board[newRow][c]=board[r][c]; board[r][c]=null; empty.push(r);
+        const cell=boardEl.children[newRow*size+c];
+        cell.style.transform='translateY(-60px) rotate(-15deg)';
+        setTimeout(()=>{cell.style.transition='transform 0.4s ease'; cell.style.transform='translateY(0) rotate(0deg)';},50);
+      }
+    }
+    for(let e of empty) board[e][c]=randomFruit();
+  }
+  renderBoard();
+}
+
+// Отображение поля
 function renderBoard(){ for(let r=0;r<size;r++)for(let c=0;c<size;c++){ const cell=boardEl.children[r*size+c]; cell.textContent=board[r][c]; cell.classList.remove('remove','hint'); cell.style.transform='scale(1)'; } }
 
-function resolveBoard(){ let matches=findMatches(); if(matches.length>0){ removeMatches(matches); matchSound.play(); setTimeout(()=>{ dropFruits(); resolveBoard(); checkTask(); },400); } else if(findMoves().length===0){ reshuffle(); } }
+// Решение совпадений
+function resolveBoard(){
+  let matches=findMatches();
+  if(matches.length>0){
+    removeMatches(matches);
+    matchSound.play();
+    setTimeout(()=>{ dropFruits(); resolveBoard(); checkTask(); },400);
+  } else if(findMoves().length===0){ reshuffle(); }
+}
 
-function checkTask(){ const t=LEVELS[currentLevel-1].task; if((t.type==='points' && score>=t.amount) || (t.type!=='points' && collected>=t.amount)){ saveScore(score); alert(`Уровень ${currentLevel} пройден!`); if(currentLevel>=unlockedLevels && unlockedLevels<LEVELS.length) unlockedLevels++; currentLevel++; if(currentLevel>LEVELS.length) currentLevel=LEVELS.length; initBoard(); updateLevelButtons(); } }
+// Проверка задания
+function checkTask(){
+  const t=LEVELS[currentLevel-1].task;
+  if((t.type==='points' && score>=t.amount) || (t.type!=='points' && collected>=t.amount)){
+    saveScore(score); alert(`Уровень ${currentLevel} пройден!`);
+    if(currentLevel>=unlockedLevels && unlockedLevels<LEVELS.length) unlockedLevels++;
+    currentLevel++; if(currentLevel>LEVELS.length) currentLevel=LEVELS.length;
+    initBoard(); updateLevelButtons();
+  }
+}
 
-function findMoves(){ let m=[]; function swapTmp(r1,c1,r2,c2){ [board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]]; } for(let r=0;r<size;r++)for(let c=0;c<size;c++){ if(c<size-1){ swapTmp(r,c,r,c+1); if(findMatches().length>0)m.push([[r,c],[r,c+1]]); swapTmp(r,c,r,c+1);} if(r<size-1){ swapTmp(r,c,r+1,c); if(findMatches().length>0)m.push([[r,c],[r+1,c]]); swapTmp(r,c,r+1,c);} } return m; }
+// Находим возможные ходы
+function findMoves(){
+  let m=[];
+  function swapTmp(r1,c1,r2,c2){ [board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]]; }
+  for(let r=0;r<size;r++)for(let c=0;c<size;c++){
+    if(c<size-1){ swapTmp(r,c,r,c+1); if(findMatches().length>0)m.push([[r,c],[r,c+1]]); swapTmp(r,c,r,c+1);}
+    if(r<size-1){ swapTmp(r,c,r+1,c); if(findMatches().length>0)m.push([[r,c],[r+1,c]]); swapTmp(r,c,r+1,c);}
+  }
+  return m;
+}
 
-function reshuffle(){ let flat=board.flat().filter(f=>f); flat.sort(()=>Math.random()-0.5); for(let r=0;r<size;r++) for(let c=0;c<size;c++) board[r][c]=flat[r*size+c]; renderBoard(); if(findMoves().length===0) reshuffle(); }
+// Если ходов нет — перемешиваем поле
+function reshuffle(){
+  let flat=board.flat().filter(f=>f); flat.sort(()=>Math.random()-0.5);
+  for(let r=0;r<size;r++) for(let c=0;c<size;c++) board[r][c]=flat[r*size+c];
+  renderBoard();
+  if(findMoves().length===0) reshuffle();
+}
 
+// Подсказки
 function resetIdleTimer(){ clearTimeout(idleTimer); clearHint(); idleTimer=setTimeout(showHint,5000); }
 function showHint(){ let moves=findMoves(); if(moves.length>0){ let move=moves[Math.floor(Math.random()*moves.length)]; move.forEach(([r,c])=>boardEl.children[r*size+c].classList.add("hint")); } }
 function clearHint(){ [...boardEl.children].forEach(cell=>cell.classList.remove("hint")); }
 
+// Рекорды
 function saveScore(s){ let scores=JSON.parse(localStorage.getItem("scores")||"[]"); scores.push(s); scores.sort((a,b)=>b-a); scores=scores.slice(0,5); localStorage.setItem("scores",JSON.stringify(scores)); }
 function showScores(){ document.getElementById("menu").style.display='none'; document.getElementById("scores").style.display='block'; let scores=JSON.parse(localStorage.getItem("scores")||"[]"); let tbody=document.getElementById("scoreTable"); tbody.innerHTML=''; scores.forEach((s,i)=>{ tbody.innerHTML+=`<tr><td>${i+1}</td><td>${s}</td></tr>`; }); }
 
+// Меню уровней
 function startGame(){ document.getElementById('menu').style.display='none'; document.getElementById('levelSelect').style.display='none'; document.getElementById('scores').style.display='none'; document.getElementById('game').style.display='block'; initBoard(); }
 function showLevelSelect(){ document.getElementById('menu').style.display='none'; document.getElementById('levelSelect').style.display='block'; updateLevelButtons(); }
 function updateLevelButtons(){ const levelsDiv=document.getElementById('levels'); levelsDiv.innerHTML=''; for(let i=1;i<=50;i++){ const btn=document.createElement('button'); btn.className='btn'; btn.textContent='Уровень '+i; if(i<=unlockedLevels){ btn.onclick=()=>{currentLevel=i; initBoard(); document.getElementById('levelSelect').style.display='none'; document.getElementById('game').style.display='block';}; } else { btn.disabled=true; btn.style.background='#999'; } levelsDiv.appendChild(btn);} }
@@ -263,41 +312,25 @@ function backToMenu(){ document.getElementById('menu').style.display='block'; do
 
 document.getElementById('menu').style.display='block';
 
-// --- Исправленные свайпы для мобильных ---
-let touchStart = null;
-boardEl.addEventListener('touchstart', e => {
-  if (e.touches.length===1) {
-    const touch = e.touches[0];
-    touchStart = { x: touch.clientX, y: touch.clientY };
-    const rect = boardEl.getBoundingClientRect();
-    const cellSize = rect.width / size;
-    const col = Math.floor((touch.clientX - rect.left) / cellSize);
-    const row = Math.floor((touch.clientY - rect.top) / cellSize);
-    selected = { r: row, c: col };
+// --- Свайпы для мобильных ---
+let touchStart=null;
+boardEl.addEventListener('touchstart', e=>{ if(e.touches.length===1){ touchStart={x:e.touches[0].clientX,y:e.touches[0].clientY}; }});
+boardEl.addEventListener('touchend', e=>{
+  if(!touchStart) return;
+  let dx=e.changedTouches[0].clientX - touchStart.x;
+  let dy=e.changedTouches[0].clientY - touchStart.y;
+  let absX=Math.abs(dx), absY=Math.abs(dy);
+  if(absX>30 || absY>30){
+    let r=selected?.r, c=selected?.c;
+    if(r==null || c==null) { touchStart=null; return; }
+    if(absX>absY){ if(dx>0 && c<size-1) swap(r,c,r,c+1); else if(dx<0 && c>0) swap(r,c,r,c-1); }
+    else { if(dy>0 && r<size-1) swap(r,c,r+1,c); else if(dy<0 && r>0) swap(r,c,r-1,c); }
+    resolveBoard();
+    selected.cell.style.transform='scale(1)';
+    selected=null;
   }
+  touchStart=null;
 });
-boardEl.addEventListener('touchend', e => {
-  if (!touchStart || !selected) return;
-  const touch = e.changedTouches[0];
-  const dx = touch.clientX - touchStart.x;
-  const dy = touch.clientY - touchStart.y;
-  const absX = Math.abs(dx), absY = Math.abs(dy);
-  const r = selected.r, c = selected.c;
-
-  if (absX>30 || absY>30) { trySwapSwipe(r,c,dx,dy,absX,absY); }
-  selected=null; touchStart=null;
-});
-
-function trySwapSwipe(r,c,dx,dy,absX,absY){
-  if(absX>absY){
-    if(dx>0 && c<size-1) trySwap(r,c,r,c+1);
-    else if(dx<0 && c>0) trySwap(r,c,r,c-1);
-  } else {
-    if(dy>0 && r<size-1) trySwap(r,c,r+1,c);
-    else if(dy<0 && r>0) trySwap(r,c,r-1,c);
-  }
-}
 </script>
 </body>
 </html>
-
